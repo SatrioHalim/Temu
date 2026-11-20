@@ -2,14 +2,26 @@ import express from "express";
 import bodyParser from "body-parser";
 import router from "./routes/api";
 import "dotenv/config";
+import connectDB from "./utils/database";
 
-const app = express();
-const PORT = 3000;
+async function init() {
+  try {
+    const result = await connectDB();
+    console.log("Database connection status:", result);
 
-app.use(bodyParser.json());
+    const app = express();
+    const PORT = 3000;
 
-app.use("/api", router);
+    app.use(bodyParser.json());
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+    app.use("/api", router);
+
+    app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.log("Error starting the server:", error);
+  }
+}
+
+init();
