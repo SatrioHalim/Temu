@@ -18,6 +18,8 @@ async function init() {
 
     app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
+      console.log(`App Name : ${process.env.APP_NAME}`)
+      console.log(`App Version : ${process.env.APP_VERSION}`)
     });
   } catch (error) {
     console.log("Error starting the server:", error);

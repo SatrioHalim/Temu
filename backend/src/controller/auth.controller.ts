@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import * as Yup from "yup";
 import UserModel from "../models/user.model";
 import { encrypt } from "../utils/encryption";
+import { generateToken } from "../utils/jwt";
+import { IReqUser } from "../middlewares/auth.middleware";
 
 type TRegister = {
   fullname: string;
@@ -52,14 +54,12 @@ export default {
       });
 
       res.status(200).json({
-        app_version: process.env.APP_VERSION,
         message: "Successfully registered",
         data: result,
       });
     } catch (error) {
       const err = error as unknown as Error;
       res.status(400).json({
-        app_version: process.env.APP_VERSION,
         message: err.message,
         data: null,
       });
@@ -82,7 +82,6 @@ export default {
 
       if (!userByIdentifier) {
         return res.status(403).json({
-          app_version: process.env.APP_VERSION,
           message: "User not found",
           data: null,
         });
@@ -94,22 +93,40 @@ export default {
 
       if (!validatePassword) {
         return res.status(403).json({
-          app_version: process.env.APP_VERSION,
           message: "Invalid password",
           data: null,
         });
       }
 
-      return res.status(200).json({
-        app_version: process.env.APP_VERSION,
-        message: "Login successful",
-        data: userByIdentifier,
+      const token = generateToken({
+        id: userByIdentifier._id,
+        role: userByIdentifier.role,
       });
-      
+
+      return res.status(200).json({
+        message: "Login successful",
+        data: token,
+      });
     } catch (error) {
       const err = error as unknown as Error;
       res.status(400).json({
-        app_version: process.env.APP_VERSION,
+        message: err.message,
+        data: null,
+      });
+    }
+  },
+  me: async (req: IReqUser, res: Response) => {
+    try {
+      const user = req.user;
+      const result = await UserModel.findById(user?.id);
+
+      res.status(200).json({
+        message: "Success get user profile",
+        data: result,
+      });
+    } catch (error) {
+      const err = error as unknown as Error;
+      res.status(400).json({
         message: err.message,
         data: null,
       });
