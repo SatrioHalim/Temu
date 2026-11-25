@@ -10,7 +10,7 @@ async function init() {
     console.log("Database connection status:", result);
 
     const app = express();
-    const PORT = 3000;
+    const PORT = process.env.PORT || 3000;
 
     app.use(bodyParser.json());
 

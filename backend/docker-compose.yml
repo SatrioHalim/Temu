@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: .
+    container_name: temu-backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      # Pakai MongoDB lokal dari service "mongo" di bawah.
+      # Kalau mau pakai MongoDB Atlas (DATABASE_URL di .env), hapus baris ini
+      # beserta "depends_on" dan service "mongo".
+      DATABASE_URL: mongodb://mongo:27017
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    container_name: temu-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
