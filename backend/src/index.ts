@@ -26,6 +26,11 @@ async function init() {
       });
     });
 
+    // Health check
+    app.get("/app-status", (_req, res) => {
+      res.status(200).json({ status: "ok" });
+    });
+
     app.use("/api", router);
     docs(app);
 
@@ -36,6 +41,7 @@ async function init() {
     });
   } catch (error) {
     console.log("Error starting the server:", error);
+    process.exit(1);
   }
 }
 
