@@ -1,0 +1,126 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [main]
+
+# Minimal permissions: read the code, and read the PR's changed-file list
+# (dorny/paths-filter uses the GitHub API for pull_request events).
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    # Keep this name stable: it is the required status check in branch protection.
+    name: Backend build & start
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Detect backend changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend-ci.yml'
+
+      - name: No backend changes - skipping
+        if: steps.filter.outputs.backend != 'true'
+        run: echo "No changes under backend/ in this PR. Nothing to check; marking as passed."
+
+      - name: Checkout
+        if: steps.filter.outputs.backend == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.backend == 'true'
+        uses: actions/setup-node@v4
+        with:
+          # Matches the Dockerfile base image (node:22-alpine).
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.filter.outputs.backend == 'true'
+        working-directory: backend
+        run: npm ci
+
+      - name: Build
+        if: steps.filter.outputs.backend == 'true'
+        working-directory: backend
+        run: npm run build
+
+      - name: Start server & health check
+        if: steps.filter.outputs.backend == 'true'
+        working-directory: backend
+        env:
+          PORT: "10000"
+          HEALTH_URL: http://127.0.0.1:10000/app-status
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET: ${{ secrets.SECRET }}
+          APP_NAME: temu-backend-ci
+          APP_VERSION: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::Secret DATABASE_URL is not set (Settings -> Secrets and variables -> Actions)."
+            exit 1
+          fi
+
+          LOG_FILE="$RUNNER_TEMP/server.log"
+          MAX_WAIT=60
+          INTERVAL=2
+
+          # setsid puts npm + node in their own process group so we can kill both.
+          setsid npm start > "$LOG_FILE" 2>&1 &
+          SERVER_PID=$!
+
+          print_log() {
+            echo "::group::Server log"
+            cat "$LOG_FILE" || true
+            echo "::endgroup::"
+          }
+
+          cleanup() {
+            if kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Stopping server (pgid $SERVER_PID)..."
+              kill -TERM -- "-$SERVER_PID" 2>/dev/null || true
+              sleep 2
+              kill -KILL -- "-$SERVER_PID" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          echo "Waiting for $HEALTH_URL (max ${MAX_WAIT}s, every ${INTERVAL}s)..."
+          elapsed=0
+          while [ "$elapsed" -lt "$MAX_WAIT" ]; do
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "::error::Server process exited before becoming healthy."
+              print_log
+              exit 1
+            fi
+
+            status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$HEALTH_URL" || true)
+            if [ "$status" = "200" ]; then
+              echo "Health check passed after ~${elapsed}s (HTTP 200)."
+              print_log
+              exit 0
+            fi
+
+            echo "  ${elapsed}s: not ready yet (HTTP ${status:-none})"
+            sleep "$INTERVAL"
+            elapsed=$((elapsed + INTERVAL))
+          done
+
+          echo "::error::Health check did not return HTTP 200 within ${MAX_WAIT}s."
+          print_log
+          exit 1
