@@ -66,6 +66,12 @@ export default {
     }
   },
   login: async (req: Request, res: Response) => {
+    /**
+     #swagger.requestBody = {
+      required: true,
+      schema: {$ref: "#/components/schemas/LoginRequest"}
+     }
+     */
     try {
       // ambil data user based by identifier -> email or username
       const { identifier, password } = req.body as unknown as TLogin;
@@ -103,6 +109,8 @@ export default {
         role: userByIdentifier.role,
       });
 
+      console.log("User logged in:", userByIdentifier.username);
+
       return res.status(200).json({
         message: "Login successful",
         data: token,
@@ -116,6 +124,11 @@ export default {
     }
   },
   me: async (req: IReqUser, res: Response) => {
+    /**
+     #swagger.security = [{
+      "bearerAuth": []
+     }]
+     */
     try {
       const user = req.user;
       const result = await UserModel.findById(user?.id);
